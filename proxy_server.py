@@ -39,22 +39,24 @@ class proxy_server:
             return
 
         try:
-            first_line = req_bytes.split(b'\r\n')[0].decode().split(' ')
-            req_type = first_line[0]
-            hostname = utility.extract_hostname(first_line[1])
-            port = utility.get_portnum(first_line[1])
+            first_line = req_bytes.split(b'\r\n')[0].decode()
+            first_line_split = first_line.split(' ')
+            req_type = first_line_split[0]
+            hostname = utility.extract_hostname(first_line_split[1])
+            port = utility.get_portnum(first_line_split[1])
+
+            target = socket(AF_INET, SOCK_STREAM)
+            target.connect((hostname, port))
 
             if req_type == 'CONNECT':
                 self._https_connection(client, hostname, port, req_bytes)
-            self._http_connection(client, hostname, port, req_bytes)
+            self._http_connection(client, target, req_bytes)
         except Exception as e:
             self.logger.log_error(e)
             self.logger.log_dump(req_bytes)
             return utility.get_error_page('Error Loading page', f'{e}').encode('utf-8')
     
-    def _http_connection(self, client : socket, hostname : str, port : int, req : bytes) -> None:
-        target = socket(AF_INET, SOCK_STREAM)
-        target.connect((hostname, port))
+    def _http_connection(self, client : socket, target : socket, req : bytes) -> None:
 
         target.setblocking(0)
         client.setblocking(0)
@@ -63,15 +65,16 @@ class proxy_server:
         while True:
             try:
                 if req != b'':
-                    target.send(req)
-                    self.logger.log_info(req)
-                    filename = req.split(b'\r\n')[0].split(b' ')[1].decode().replace('/', '_')
-                    data = self.load_cache(filename)
+                    first_line = req.split(b'\r\n')[0].decode() # request line
+                    cache_filename = first_line.split(' ')[1].replace('/', '_') # use complete url as filename
+                    data = self.load_cache(cache_filename)
                     if data != None:
+                        self.logger.log_info(f"[CACHE HIT] {first_line}") # log
                         res = data
                         cache_flag = True
                     else:
-                        file = open(f"cache/{filename}", 'wb')
+                        target.send(req)
+                        file = open(f"cache/{cache_filename}", 'wb')
                     req = b''
                 if cache_flag == False:
                     res = target.recv(4096)
