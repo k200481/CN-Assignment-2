@@ -1,4 +1,3 @@
-from pydoc import cli
 from socket import *
 import threading
 from server_logging import server_logger
@@ -28,70 +27,70 @@ class proxy_server:
         while True:
             c, ret_addr = self.listener.accept()
             self.clients.append(c)
-            #self._client_handler(c, ret_addr)
             threading.Thread(
-                target=self._client_handler, 
+                target=self._new_connection_handler, 
                 args=[self.clients[len(self.clients) - 1], ret_addr]
             ).start()
 
-    def _client_handler(self, client : socket, ret_addr):
-        #self.logger.log_info(f'{ret_addr[0]}:{ret_addr[1]} Connected')
+    def _new_connection_handler(self, client : socket, ret_addr):
         req_bytes = client.recv(4096)
         if req_bytes == b'':
-            #print(f'[{id}] [ERROR] Empty request from {ret_addr}')
             client.close()
             return
-        
+
         try:
-            self._req_handler(client, req_bytes)
+            first_line = req_bytes.split(b'\r\n')[0].decode().split(' ')
+            req_type = first_line[0]
+            hostname = utility.extract_hostname(first_line[1])
+            port = utility.get_portnum(first_line[1])
+
+            if req_type == 'CONNECT':
+                self._https_connection(client, hostname, port, req_bytes)
+            self._http_connection(client, hostname, port, req_bytes)
         except Exception as e:
             self.logger.log_error(e)
             self.logger.log_dump(req_bytes)
             return utility.get_error_page('Error Loading page', f'{e}').encode('utf-8')
     
-    def _req_handler(self, client: socket, req_bytes: bytes) -> None:
-        req = req_bytes.decode('utf-8').split('\r\n')[0]
-        #req = str(req_bytes).split('\\r')[0]
-        hostname = utility.extract_hostname(req)
-        port = utility.get_portnum(req)
-        req_type = utility.extract_request_type(req)
-        #http_ver = utility.extract_http_ver(req)
-
-        if gethostbyname(hostname) in self.blacklist:
-            self.logger.log_info(f'{req} Blocked')
-            client.send(utility.get_error_page('Permission Denied', 
-                'The website you are trying to access is blacklisted').encode('utf-8')
-            )
-            client.close()
-            return
-
-        if req_type == 'CONNECT':
-            self._https_request(client, hostname, port, req_bytes)
-        else:
-            self._http_req(client, hostname, port, req_bytes)
-    
-    def _http_req(self, client : socket, hostname : str, port : int, req : bytes) -> None:
+    def _http_connection(self, client : socket, hostname : str, port : int, req : bytes) -> None:
         target = socket(AF_INET, SOCK_STREAM)
         target.connect((hostname, port))
 
         target.setblocking(0)
         client.setblocking(0)
 
+        cache_flag = False
         while True:
             try:
-                target.send(req)
-                res = target.recv(4096)
+                if req != b'':
+                    target.send(req)
+                    self.logger.log_info(req)
+                    filename = req.split(b'\r\n')[0].split(b' ')[1].decode().replace('/', '_')
+                    data = self.load_cache(filename)
+                    if data != None:
+                        res = data
+                        cache_flag = True
+                    else:
+                        file = open(f"cache/{filename}", 'wb')
+                    req = b''
+                if cache_flag == False:
+                    res = target.recv(4096)
             except:
                 pass
             try:
-                client.send(res)
+                if res != b'':
+                    client.send(res)
+                    if cache_flag == False:
+                        file.write(res)
+                        file.flush()
+                    res = b''
+                    cache_flag = False
                 req = client.recv(4096)
             except:
                 pass
-            
 
     # forwards given https req to given hotname:port and returens the response
-    def _https_request(self, client : socket, hostname : str, port : int, req: bytes):
+    def _https_connection(self, client : socket, hostname : str, port : int, req: bytes):
         target = socket(AF_INET, SOCK_STREAM)
         target.connect((hostname, port))
 
@@ -130,4 +129,10 @@ class proxy_server:
             return file.read()
         except Exception as e:
             #self.logger.log_error(e)
+            return None
+    def load_cache(self, filename) -> bytes:
+        try:
+            return open(f"cache/{filename}", 'rb').read()
+        except Exception as e:
+            self.logger.log_error(e)
             return None
