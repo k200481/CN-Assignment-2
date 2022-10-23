@@ -69,11 +69,12 @@ class proxy_server:
                     cache_filename = first_line.split(' ')[1].replace('/', '_') # use complete url as filename
                     data = self.load_cache(cache_filename)
                     if data != None:
-                        self.logger.log_info(f"[CACHE HIT] {first_line}") # log
+                        self.logger.log_info(f"[CACHE HIT ] {first_line}") # log
                         res = data
                         cache_flag = True
                     else:
                         target.send(req)
+                        self.logger.log_info(f"[CACHE MISS] {first_line}") # log
                         file = open(f"cache/{cache_filename}", 'wb')
                     req = b''
                 if cache_flag == False:
@@ -114,25 +115,7 @@ class proxy_server:
                 client.sendall(res)
             except error as e:
                 pass
-    
-    def cache(self, req : str, data : bytes) -> None:
-        try:
-            url = req.decode().split(" ")[1]
-            filename = url.strip("/").replace("/", "_")
-            file = open(f"cache/{filename}", 'wb')
-            file.write(data)
-            file.close()
-        except:
-            pass
-    def retrieve(self, req : str) -> bytes:
-        try:
-            url = req.decode().split(" ")[1]
-            filename = url.strip("/").replace("/", "_")
-            file = open(f"cache/{filename}", 'rb')
-            return file.read()
-        except Exception as e:
-            #self.logger.log_error(e)
-            return None
+
     def load_cache(self, filename) -> bytes:
         try:
             return open(f"cache/{filename}", 'rb').read()
