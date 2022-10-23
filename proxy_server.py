@@ -45,6 +45,10 @@ class proxy_server:
             hostname = utility.extract_hostname(first_line_split[1])
             port = utility.get_portnum(first_line_split[1])
 
+            if gethostbyname(hostname) in self.blacklist:
+                client.close()
+                return
+
             target = socket(AF_INET, SOCK_STREAM)
             target.connect((hostname, port))
 
