@@ -1,3 +1,4 @@
+from pydoc import cli
 from socket import *
 import threading
 from server_logging import server_logger
@@ -76,44 +77,18 @@ class proxy_server:
         target.setblocking(0)
         client.setblocking(0)
 
-        data = b''
-        cache_flag = False
-        old_req = b''
         while True:
             try:
-                if req != b'':
-                    cached_data = self.retrieve(req)
-                    if cached_data == None or cached_data == b'':
-                        target.send(req)
-                        cache_flag = False
-                    else:
-                        cache_flag = True
-                    self.logger.log_dump(req)
-                    if data != b'':
-                        self.logger.log_info(f'{req} Cache Miss')
-                        self.cache(req, data)
-                        data = b''
-                    else:
-                        self.logger.log_info(f'{req} Cache Miss')
-                    old_req = req
-                    req = b''
-                if cache_flag:
-                    res = cached_data
-                    self.logger.log_info(f'{old_req} Cache Hit')
-                    cache_flag = False
-                else:
-                    res = target.recv(4096)
-                    data = data.join([res])
+                target.send(req)
+                res = target.recv(4096)
             except:
                 pass
             try:
-                if res != b'':
-                    client.send(res)
-                    self.logger.log_dump(res)
-                    res = b''
+                client.send(res)
                 req = client.recv(4096)
             except:
                 pass
+            
 
     # forwards given https req to given hotname:port and returens the response
     def _https_request(self, client : socket, hostname : str, port : int, req: bytes):
