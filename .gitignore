@@ -1,0 +1,15 @@
+backup
+links
+__pycache__/my_requests.cpython-38.pyc
+__pycache__/proxy_server.cpython-38.pyc
+__pycache__/server_logging.cpython-38.pyc
+__pycache__/test.cpython-38.pyc
+__pycache__/utility.cpython-38.pyc
+cache/http:__httpforever.com_css_images_banner.svg
+cache/http:__httpforever.com_css_style.min.css
+cache/http:__httpforever.com_favicon.ico
+cache/http:__httpforever.com_js_init.min.js
+logs/dump.bin
+logs/dumps.log
+logs/error.log
+logs/info.log
