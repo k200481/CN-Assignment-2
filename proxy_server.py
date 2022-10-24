@@ -1,3 +1,4 @@
+from select import select
 from socket import *
 import threading
 from server_logging import server_logger
@@ -59,6 +60,8 @@ class proxy_server:
             self.logger.log_error(e)
             self.logger.log_dump(req_bytes)
             return utility.get_error_page('Error Loading page', f'{e}').encode('utf-8')
+        
+        self.logger.log_info('Exiting')
     
     def _http_connection(self, client : socket, target : socket, req : bytes) -> None:
 
@@ -105,20 +108,36 @@ class proxy_server:
         reply = 'HTTP/1.0 200 Connection Established\r\nProxy-agent: K200481_K20\r\n\r\n'
         client.send(reply.encode('utf-8'))
 
-        client.setblocking(0)
-        target.setblocking(0)
+        first_line = req.split(b'\r\n')[0].decode() # request line
+        cache_filename = first_line.split(' ')[1].replace('/', '_')
+        data = self.load_cache(cache_filename)
+        if not data:
+            file = open(f'cache/{cache_filename}', 'wb')
+            self.logger.log_info(f'[CACHE MISS] {req}')
+        else:
+            self.logger.log_info(f'[CACHE HIT ] {req}')
+            client.recv(4096)
+            client.send(data)
 
+        state = 'rq' # request
         while True:
-            try:
-                req = client.recv(4096)
-                target.sendall(req)
-            except error as e:
-                pass
-            try:
+            rlist, w, x = select([client, target], [], [], 0)
+            if target in rlist:
+                if state == 'rq':
+                    state = 'rc' # response + caching
                 res = target.recv(4096)
-                client.sendall(res)
-            except error as e:
-                pass
+                if res == b'':
+                    break
+                client.send(res)
+                if state == 'rc':
+                    file.write(res)
+            if client in rlist:
+                req = client.recv(4096)
+                if req == b'':
+                    break
+                target.send(req)
+                if state == 'rc':
+                    state = 'e' # end caching
 
     def load_cache(self, filename) -> bytes:
         try:
