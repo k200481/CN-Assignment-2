@@ -1,3 +1,5 @@
+from ctypes import util
+from dataclasses import field
 from select import select
 from socket import *
 import threading
@@ -51,7 +53,7 @@ class proxy_server:
             target.connect((hostname, port))
 
             if req_type == 'CONNECT':
-                self._https_connection(client, hostname, port, req_bytes)
+                self._https_connection(client, target, req_bytes)
             self._http_connection(client, target, req_bytes)
         except Exception as e:
             self.logger.log_error(e)
@@ -61,47 +63,39 @@ class proxy_server:
         self.logger.log_info('Exiting')
     
     def _http_connection(self, client : socket, target : socket, req : bytes) -> None:
-
-        target.setblocking(0)
-        client.setblocking(0)
-
-        cache_flag = False
+        file = self._process_http_request(client, target, req)
         while True:
-            try:
-                if req != b'':
-                    first_line = req.split(b'\r\n')[0].decode() # request line
-                    cache_filename = first_line.split(' ')[1].replace('/', '_') # use complete url as filename
-                    data = self.load_cache(cache_filename)
-                    if data != None:
-                        self.logger.log_info(f"[CACHE HIT ] {first_line}") # log
-                        res = data
-                        cache_flag = True
-                    else:
-                        target.send(req)
-                        self.logger.log_info(f"[CACHE MISS] {first_line}") # log
-                        file = open(f"cache/{cache_filename}", 'wb')
-                    req = b''
-                if cache_flag == False:
-                    res = target.recv(4096)
-            except:
-                pass
-            try:
-                if res != b'':
-                    client.send(res)
-                    if cache_flag == False:
-                        file.write(res)
-                        file.flush()
-                    res = b''
-                    cache_flag = False
+            rlist, wlist, xlist = select([client, target], [], [])
+            if client in rlist:
                 req = client.recv(4096)
-            except:
-                pass
+                if req == b'':
+                    break
+                file = self._process_http_request(client, target, req)
+            if target in rlist:
+                res = target.recv(4096)
+                if res == b'':
+                    break
+                client.send(res)
+                file.write(res)
+    
+    def _process_http_request(self, client : socket, target : socket, req : bytes):
+        first_line = req.split(b'\r\n')[0].decode()
+        first_line_split = first_line.split(' ')
+        url = utility.extract_url(first_line_split[1])
+        cache_filename = url.replace('/', '_')
+        data = self.load_cache(cache_filename)
+        if data: # state 1 requesting, as the current request was fulfilled
+            client.send(data)
+            self.logger.log_info(f'[CACHE HIT ] {first_line}')
+            return None
+        # state 2 responding + caching, as the current request was not pre-cached
+        file = open(f'cache/{cache_filename}', 'wb')
+        target.send(req)
+        self.logger.log_info(f'[CACHE MISS] {first_line}')
+        return file
 
     # forwards given https req to given hotname:port and returens the response
-    def _https_connection(self, client : socket, hostname : str, port : int, req: bytes):
-        target = socket(AF_INET, SOCK_STREAM)
-        target.connect((hostname, port))
-
+    def _https_connection(self, client : socket, target : socket, req: bytes):
         reply = 'HTTP/1.0 200 Connection Established\r\nProxy-agent: K200481_K20\r\n\r\n'
         client.send(reply.encode('utf-8'))
 
@@ -121,6 +115,5 @@ class proxy_server:
     def load_cache(self, filename) -> bytes:
         try:
             return open(f"cache/{filename}", 'rb').read()
-        except Exception as e:
-            self.logger.log_error(e)
+        except:
             return None
