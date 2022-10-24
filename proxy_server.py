@@ -14,7 +14,7 @@ class proxy_server:
             except:
                 pass
         self.listener = socket(AF_INET, SOCK_STREAM)
-        self.clients : list[socket] = []
+        self.connections : list[threading.Thread] = []
         self.logger = server_logger('logs/info.log', 'logs/error.log', 'logs/dumps.log')
 
     def start(self, ip, port):
@@ -22,18 +22,15 @@ class proxy_server:
         self.listener.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.listener.bind(addr)
         self.listener.listen(5)
-        self._listen()
+        threading.Thread(target=self._listen).start()
     
     def _listen(self):
         while True:
             c, ret_addr = self.listener.accept()
-            self.clients.append(c)
-            threading.Thread(
-                target=self._new_connection_handler, 
-                args=[self.clients[len(self.clients) - 1], ret_addr]
-            ).start()
+            self.connections.append(threading.Thread(target=self._new_connection_handler, args=[c]))
+            self.connections[len(self.connections) - 1].start()
 
-    def _new_connection_handler(self, client : socket, ret_addr):
+    def _new_connection_handler(self, client : socket):
         req_bytes = client.recv(4096)
         if req_bytes == b'':
             client.close()
