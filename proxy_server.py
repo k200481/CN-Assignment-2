@@ -108,36 +108,18 @@ class proxy_server:
         reply = 'HTTP/1.0 200 Connection Established\r\nProxy-agent: K200481_K20\r\n\r\n'
         client.send(reply.encode('utf-8'))
 
-        first_line = req.split(b'\r\n')[0].decode() # request line
-        cache_filename = first_line.split(' ')[1].replace('/', '_')
-        data = self.load_cache(cache_filename)
-        if not data:
-            file = open(f'cache/{cache_filename}', 'wb')
-            self.logger.log_info(f'[CACHE MISS] {req}')
-        else:
-            self.logger.log_info(f'[CACHE HIT ] {req}')
-            client.recv(4096)
-            client.send(data)
-
-        state = 'rq' # request
         while True:
             rlist, w, x = select([client, target], [], [], 0)
             if target in rlist:
-                if state == 'rq':
-                    state = 'rc' # response + caching
                 res = target.recv(4096)
                 if res == b'':
                     break
                 client.send(res)
-                if state == 'rc':
-                    file.write(res)
             if client in rlist:
                 req = client.recv(4096)
                 if req == b'':
                     break
                 target.send(req)
-                if state == 'rc':
-                    state = 'e' # end caching
 
     def load_cache(self, filename) -> bytes:
         try:
