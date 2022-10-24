@@ -9,7 +9,7 @@ class proxy_server:
         blacklisted_hosts = open('blacklist.txt', 'r').readlines()
         for host in blacklisted_hosts:
             try:
-                self.blacklist.append(gethostbyname(host))
+                self.blacklist.append(gethostbyname(host.strip()))
             except:
                 pass
         self.listener = socket(AF_INET, SOCK_STREAM)
