@@ -1,13 +1,13 @@
-from ctypes import util
-from dataclasses import field
 from select import select
 from socket import *
 import threading
 from server_logging import server_logger
 import utility
+import os
+import time
 
 class proxy_server:
-    def __init__(self) -> None:
+    def __init__(self, algo="fcfs") -> None:
         self.blacklist : list[str] = []
         blacklisted_hosts = open('blacklist.txt', 'r').readlines()
         for host in blacklisted_hosts:
@@ -18,6 +18,7 @@ class proxy_server:
         self.listener = socket(AF_INET, SOCK_STREAM)
         self.connections : list[threading.Thread] = []
         self.logger = server_logger('logs/info.log', 'logs/error.log', 'logs/dumps.log')
+        self.algo = algo
 
     def start(self, ip, port):
         addr = (ip, port)
@@ -89,6 +90,8 @@ class proxy_server:
             self.logger.log_info(f'[CACHE HIT ] {first_line}')
             return None
         # state 2 responding + caching, as the current request was not pre-cached
+        if len(os.listdir('cache/')) >= 5:
+            self.delete_cache_entry()
         file = open(f'cache/{cache_filename}', 'wb')
         target.send(req)
         self.logger.log_info(f'[CACHE MISS] {first_line}')
@@ -117,3 +120,23 @@ class proxy_server:
             return open(f"cache/{filename}", 'rb').read()
         except:
             return None
+    
+    def delete_cache_entry(self):
+        files = os.scandir("cache/")
+        min = files[0]
+        for file in files:
+            files = os.scandir("cache/")
+            min = time.time()
+            oldest = ""
+            for file in files:
+                st = file.stat()
+                if self.algo == "fcfs":
+                    if st.st_ctime < min:
+                        min = st.st_ctime
+                        oldest = file.name
+                else:
+                    if st.st_atime < min:
+                        min = st.st_atime
+                        oldest = file.name
+
+            os.remove(f"cache/{oldest}")
